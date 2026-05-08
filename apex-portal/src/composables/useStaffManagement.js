@@ -23,13 +23,14 @@ export function useStaffManagement(authStore, snackbar, capitalize) {
 
   async function loadStaffMembers() {
     try {
-      const querySnapshot = await getDocs(collection(db, "users"));
+      const usersRef = collection(db, "users");
+      const staffQuery = query(usersRef, where("role", "==", "staff"));
+      const querySnapshot = await getDocs(staffQuery);
       staffMembers.value = querySnapshot.docs
         .map((docSnapshot) => ({
           uid: docSnapshot.id,
           ...docSnapshot.data()
         }))
-        .filter((user) => user.role === "staff")
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     } catch (error) {
       snackbar.value = {

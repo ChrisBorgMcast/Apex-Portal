@@ -1,0 +1,122 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function currentUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isCustomer() {
+      return signedIn() &&
+        currentUserDoc().data.role == "customer";
+    }
+
+    function isStaff() {
+      return signedIn() &&
+        currentUserDoc().data.role == "staff";
+    }
+
+    function hasStaffRole(role) {
+      return isStaff() &&
+        currentUserDoc().data.staffRole == role;
+    }
+
+    function isAdmin() {
+      return hasStaffRole("admin");
+    }
+
+    function isReceptionist() {
+      return hasStaffRole("receptionist");
+    }
+
+    function isCleaner() {
+      return hasStaffRole("cleaner");
+    }
+
+    function isMaintenance() {
+      return hasStaffRole("maintenance");
+    }
+
+    function isMaid() {
+      return hasStaffRole("maid");
+    }
+
+    function isFrontDesk() {
+      return isAdmin() || isReceptionist();
+    }
+
+    match /users/{userId} {
+      allow create: if signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.role == "customer" &&
+        request.resource.data.staffRole == null;
+
+      allow get: if signedIn() &&
+        (
+          request.auth.uid == userId ||
+          isAdmin() ||
+          resource.data.role == "staff"
+        );
+
+      allow list: if isAdmin() || isStaff();
+
+      allow update: if signedIn() &&
+        (
+          (
+            request.auth.uid == userId &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(["profileImage", "profileImageUpdatedAt"])
+          ) ||
+          isAdmin()
+        );
+
+      allow delete: if isAdmin() &&
+        request.auth.uid != userId &&
+        resource.data.staffRole != "admin";
+    }
+
+    match /rooms/{roomId} {
+      allow read: if signedIn();
+
+      allow create: if isAdmin();
+
+      allow update: if isAdmin() ||
+        isReceptionist() ||
+        isCleaner() ||
+        isMaintenance() ||
+        isMaid();
+
+      allow delete: if isAdmin();
+    }
+
+    match /bookings/{bookingId} {
+      allow create: if isCustomer() &&
+        request.resource.data.customerId == request.auth.uid &&
+        request.resource.data.status == "confirmed";
+
+      allow get: if isFrontDesk() ||
+        (signedIn() && resource.data.customerId == request.auth.uid);
+
+      allow list: if isFrontDesk() || isCustomer();
+
+      allow update: if isFrontDesk() ||
+        (
+          signedIn() &&
+          resource.data.customerId == request.auth.uid &&
+          request.resource.data.customerId == request.auth.uid
+        );
+
+      allow delete: if isFrontDesk() ||
+        (signedIn() && resource.data.customerId == request.auth.uid);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
